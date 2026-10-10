@@ -6,6 +6,8 @@
 
 ## 下载与启动
 
+[下载 Windows 成品](https://github.com/Longlivemao11/TS2MP4/releases/download/v1.0.2/TS2MP4-Windows-v1.0.2.zip) · [查看 v1.0.2 发布页](https://github.com/Longlivemao11/TS2MP4/releases/tag/v1.0.2)
+
 普通用户请在本仓库的 **Releases** 页面下载 `TS2MP4-Windows-v1.0.2.zip`。GitHub 的 **Code → Download ZIP** 和自动生成的 **Source code** 下载项是源码，需要自行编译。
 
 1. 将下载包完整解压到一个文件夹。
