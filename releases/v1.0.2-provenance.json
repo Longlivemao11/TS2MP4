@@ -1,0 +1,13 @@
+{
+  "version": "1.0.2",
+  "binary_origin": "Previously delivered v1.0.2 Windows binary, confirmed working by the user; unchanged in this release preparation.",
+  "compiler_target": "Microsoft .NET Framework 4.0 reference assemblies; AnyCPU",
+  "sha256": {
+    "TS2MP4.exe": "e689314be9a4c894e2d42bb09126769902196a948b23bd87b61bbbd5532d9c08",
+    "TS2MP4.exe.config": "322126b9042697d4bd09bb7a002c3ba9a301c20178f20f116d7d917b0fe72f0e",
+    "source/ConversionCore.cs": "5b58d980976e578c1e1041538eca532a5afcf40486d4818d046180a8d22b9382",
+    "source/Desktop.cs": "9bada48a8fd0208dd6ae75295db760fcc59d2559603018fc17700740d8fd6b8a",
+    "source/AssemblyInfo.cs": "1971a2de5ac51ed0dc10c791f78513d81ceb9cd2ab7bcf043e7d2b1e5de0ea49",
+    "source/app.manifest": "1141b3da625f20adbb75f0dbe3f416a1e4e95f9038f1afd6d8f5d2607f984701"
+  }
+}

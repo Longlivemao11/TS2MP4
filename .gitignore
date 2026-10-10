@@ -1,0 +1,17 @@
+/bin/
+/obj/
+/dist/
+/.vs/
+*.user
+*.suo
+*.exe
+*.dll
+*.pdb
+*.log
+*.ts
+*.mp4
+*.zip
+*.env
+settings.xml
+startup-*.txt
+TestResults/
