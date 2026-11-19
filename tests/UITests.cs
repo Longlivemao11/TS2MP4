@@ -55,6 +55,13 @@ class UITests {
             foreach (ListViewItem row in list.Items) { Job job = (Job)row.Tag; Console.WriteLine("GUI result: " + row.Text + " | " + row.SubItems[2].Text + " | " + job.Error + " | " + job.Warning); }
             if (list.Items[0].SubItems[2].Text != "完成" || list.Items[1].SubItems[2].Text != "完成" || list.Items[2].SubItems[2].Text != "失败") throw new Exception("GUI batch result states: " + ((TextBox)Field(f,"detailBox")).Text);
             if (!((Button)Field(f,"start")).Enabled || ((Button)Field(f,"stop")).Enabled) throw new Exception("restored controls");
+            foreach (ListViewItem row in list.Items) {
+                Job job = (Job)row.Tag; string state = job.State, label = row.SubItems[2].Text;
+                typeof(MainForm).GetMethod("OnProgress", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(f,
+                    new object[] { f, new ProgressChangedEventArgs(0, new Update { Job = job, Percent = 5, Text = "late progress", Finished = 0, Total = list.Items.Count }) });
+                if (job.State != state || row.SubItems[2].Text != label) throw new Exception("late progress overwrote a terminal job");
+            }
+            Console.WriteLine("PASS GUI terminal results ignore late progress");
             Console.WriteLine("PASS GUI drag-drop handler and real batch conversion, result states, controls");
             f.Close();
         }

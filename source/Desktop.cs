@@ -70,7 +70,7 @@ namespace TS2MP4 {
         void BuildUI() {
             TableLayoutPanel root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(24, 18, 24, 18), ColumnCount = 1, RowCount = 9 };
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            float[] heights = { 66, 42, 42, 100, 42, 0, 100, 74, 46 };
+            float[] heights = { 74, 42, 42, 100, 42, 0, 100, 74, 46 };
             for (int i = 0; i < heights.Length; i++) root.RowStyles.Add(i == 5 ? new RowStyle(SizeType.Percent, 100) : new RowStyle(SizeType.Absolute, heights[i]));
             Controls.Add(root);
             FlowLayoutPanel title = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false };
@@ -217,11 +217,14 @@ namespace TS2MP4 {
         void OnProgress(object sender, ProgressChangedEventArgs e) {
             Update u = (Update)e.UserState;
             if (u.Result == null) {
+                if (u.Job.State == "完成" || u.Job.State == "失败" || u.Job.State == "已取消") return;
                 u.Job.State = "转换中";
-                current.Style = u.Percent < 0 ? ProgressBarStyle.Marquee : ProgressBarStyle.Continuous;
-                if (u.Percent >= 0) current.Value = Math.Max(0, Math.Min(100, (int)u.Percent));
                 u.Job.Row.SubItems[2].Text = u.Percent < 0 ? "处理中…" : u.Percent.ToString("F0") + "%";
                 currentText.Text = "当前：" + Path.GetFileName(u.Job.Input) + " · " + u.Text;
+                current.Style = u.Percent < 0 ? ProgressBarStyle.Marquee : ProgressBarStyle.Continuous;
+                // Recreating a marquee progress-bar handle can pump queued completion events.
+                if (u.Job.State != "转换中") return;
+                if (u.Percent >= 0) current.Value = Math.Max(0, Math.Min(100, (int)u.Percent));
             } else {
                 ConversionResult r = u.Result;
                 u.Job.State = r.Success ? "完成" : (r.Cancelled ? "已取消" : "失败"); u.Job.Error = r.Error; u.Job.Output = r.Output;
