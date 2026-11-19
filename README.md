@@ -2,15 +2,15 @@
 
 一个轻量的 Windows 桌面 TS 转 MP4 工具。使用本机已经安装的 FFmpeg，支持批量无损封装和重新编码。
 
-**版本：v1.1.0（待正式发布） · 作者：Akutagawa · C# / Windows Forms · MIT License**
+**版本：v1.1.0 · 作者：Akutagawa · C# / Windows Forms · MIT License**
 
 ## 下载与启动
 
-v1.1.0 新增可选的“转换成功并校验后永久删除原 TS”。该选项默认关闭，仅对本批次生效。下方链接仍为已发布的 v1.0.2 稳定版；v1.1.0 正式发布前请使用预览下载包。
+v1.1.0 新增可选的“转换成功并校验后永久删除原 TS”。该选项默认关闭，仅对本批次生效。
 
-[下载 Windows 成品](https://github.com/Longlivemao11/TS2MP4/releases/download/v1.0.2/TS2MP4-Windows-v1.0.2.zip) · [查看 v1.0.2 发布页](https://github.com/Longlivemao11/TS2MP4/releases/tag/v1.0.2)
+[下载 Windows 成品](https://github.com/Longlivemao11/TS2MP4/releases/download/v1.1.0/TS2MP4-Windows-v1.1.0.zip) · [查看 v1.1.0 发布页](https://github.com/Longlivemao11/TS2MP4/releases/tag/v1.1.0)
 
-普通用户请在本仓库的 **Releases** 页面下载 `TS2MP4-Windows-v1.0.2.zip`。GitHub 的 **Code → Download ZIP** 和自动生成的 **Source code** 下载项是源码，需要自行编译。
+普通用户请在本仓库的 **Releases** 页面下载 `TS2MP4-Windows-v1.1.0.zip`。GitHub 的 **Code → Download ZIP** 和自动生成的 **Source code** 下载项是源码，需要自行编译。
 
 1. 将下载包完整解压到一个文件夹。
 2. 双击 `TS2MP4.exe`。启动遇到问题时，可运行 `Start-TS2MP4.cmd`，使用 Windows 本机编译器重新生成并启动。
@@ -54,7 +54,7 @@ FFmpeg 不随本工具分发。已安装的 FFmpeg 必须支持输入文件的�
 - [使用说明与故障排查](docs/USER_GUIDE.md)
 - [源码构建](docs/BUILDING.md)
 - [测试方法与验证范围](docs/TESTING.md)
-- [版本历史](CHANGELOG.md) / [v1.0.2 发布说明](releases/v1.0.2.md)
+- [版本历史](CHANGELOG.md) / [v1.1.0 发布说明](releases/v1.1.0.md)
 - [参与贡献](CONTRIBUTING.md)
 - [外部组件说明](THIRD_PARTY_NOTICES.md)
 

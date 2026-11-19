@@ -1,0 +1,124 @@
+name: Publish reviewed v1.1.0 assets
+
+# One-time publication of the reviewed archives, without rebuilding the EXE.
+# After publication, reruns only verify the existing asset digests.
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/publish-v1.1.0.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ts2mp4-publish-v1.1.0
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'Longlivemao11/TS2MP4' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Verify approved archives and publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, json, base64, hashlib, io, zipfile
+          from urllib.request import Request, urlopen
+          from urllib.parse import urlencode
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          assert repo == "Longlivemao11/TS2MP4"
+          token = os.environ["GH_TOKEN"]
+          target = os.environ["GITHUB_SHA"]
+          base = "https://api.github.com/repos/" + repo
+          assets = json.loads("[{\"name\":\"TS2MP4-Windows-v1.1.0.zip\",\"size\":61661,\"sha256\":\"6d67695d123c822963628650f8a3f59258d51dcc458710c4f7f87dab7d487929\",\"blob_sha\":\"6bae0eb56dc910448896a5684d3b4575e586cfb7\"},{\"name\":\"TS2MP4-Source-v1.1.0.zip\",\"size\":42535,\"sha256\":\"9853c7289c7a47874d7a63e39efe0e1cc2a0e48cf8658927aa3d07ff06f55b0f\",\"blob_sha\":\"11cc02d347de00c1b119d033651fd24ee4ee2a60\"},{\"name\":\"SHA256SUMS.txt\",\"size\":183,\"sha256\":\"95c92210814aefd9beebee355d1ce0b473a83e2b2fbcb04870f7e4b76636ad0c\",\"blob_sha\":\"20f1d603a59b0b159d954b8eb2682be2e267d3ee\"}]")
+          tag = "v1.1.0"
+
+          def api(path, method="GET", payload=None, binary=None, content_type=None):
+              url = path if path.startswith("https://") else base + path
+              assert url.startswith(base + "/") or url.startswith("https://uploads.github.com/repos/" + repo + "/")
+              data = binary if binary is not None else (json.dumps(payload).encode() if payload is not None else None)
+              headers = {"Authorization": "Bearer " + token, "Accept": "application/vnd.github+json",
+                         "X-GitHub-Api-Version": "2026-03-10", "User-Agent": "TS2MP4-release"}
+              if data is not None:
+                  headers["Content-Type"] = content_type or "application/json"
+              with urlopen(Request(url, data=data, headers=headers, method=method), timeout=180) as response:
+                  return json.load(response)
+
+          def check_assets(release):
+              by_name = {item["name"]: item for item in release.get("assets", [])}
+              for expected in assets:
+                  item = by_name.get(expected["name"])
+                  if not item or item.get("state") != "uploaded":
+                      return False
+                  if item["size"] != expected["size"] or item.get("digest") != "sha256:" + expected["sha256"]:
+                      raise RuntimeError("Existing release asset differs: " + expected["name"])
+              return True
+
+          matches = [r for r in api("/releases?per_page=100") if r["tag_name"] == tag]
+          assert len(matches) <= 1, "Multiple releases found for the same tag"
+          release = matches[0] if matches else None
+          if release and not release["draft"]:
+              assert check_assets(release), "Published release is incomplete; refusing to modify it automatically"
+              print("Release already published and all asset digests match: " + release["html_url"])
+              raise SystemExit(0)
+
+          payloads = {}
+          for expected in assets:
+              blob = api("/git/blobs/" + expected["blob_sha"])
+              assert blob["encoding"] == "base64"
+              data = base64.b64decode(blob["content"])
+              assert len(data) == expected["size"]
+              assert hashlib.sha256(data).hexdigest() == expected["sha256"]
+              payloads[expected["name"]] = data
+
+          with zipfile.ZipFile(io.BytesIO(payloads["TS2MP4-Source-v1.1.0.zip"])) as z:
+              assert z.testzip() is None
+              assert "Copyright (c) 2026 Akutagawa" in z.read("TS2MP4/LICENSE").decode()
+              body = z.read("TS2MP4/releases/v1.1.0.md").decode("utf-8")
+          with zipfile.ZipFile(io.BytesIO(payloads["TS2MP4-Windows-v1.1.0.zip"])) as z:
+              assert z.testzip() is None
+              assert hashlib.sha256(z.read("TS2MP4/TS2MP4.exe")).hexdigest() == "ef337c81473016fa832e5fa73af5d3af525ef3d2cc089eefb42ca34740aa6f5e"
+          for line in payloads["SHA256SUMS.txt"].decode("ascii").splitlines():
+              expected_hash, name = line.split("  ", 1)
+              assert hashlib.sha256(payloads[name]).hexdigest() == expected_hash
+
+          # Stage the release and upload all reviewed assets before making it public.
+          if release is None:
+              release = api("/releases", "POST", {"tag_name": tag, "target_commitish": target,
+                             "name": "TS2MP4 v1.1.0", "body": body, "draft": True, "prerelease": False})
+          else:
+              release = api("/releases/" + str(release["id"]), "PATCH",
+                            {"name": "TS2MP4 v1.1.0", "body": body, "prerelease": False})
+
+          assert release["target_commitish"] == target, "Unexpected draft target"
+          existing = {item["name"]: item for item in release.get("assets", [])}
+          upload_url = release["upload_url"].split("{", 1)[0]
+          for expected in assets:
+              name = expected["name"]
+              if name in existing:
+                  item = existing[name]
+                  assert item["state"] == "uploaded" and item["digest"] == "sha256:" + expected["sha256"]
+                  assert item["size"] == expected["size"]
+                  continue
+              item = api(upload_url + "?" + urlencode({"name": name}), "POST",
+                         binary=payloads[name], content_type="application/zip" if name.endswith(".zip") else "text/plain")
+              assert item["state"] == "uploaded" and item["digest"] == "sha256:" + expected["sha256"]
+              print("Verified upload: " + name)
+
+          release = api("/releases/" + str(release["id"]))
+          assert check_assets(release), "Uploaded assets are not complete"
+          release = api("/releases/" + str(release["id"]), "PATCH", {"draft": False, "make_latest": "true"})
+          assert not release["draft"]
+          assert check_assets(release)
+          print("Published: " + release["html_url"])
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write("## TS2MP4 v1.1.0 published\n\n" + release["html_url"] + "\n\n")
+              for expected in assets:
+                  summary.write("- " + expected["name"] + ": SHA-256 `" + expected["sha256"] + "`\n")
+          PY
