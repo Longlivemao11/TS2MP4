@@ -57,6 +57,7 @@ class UITests {
             foreach (ListViewItem row in list.Items) { Job job = (Job)row.Tag; Console.WriteLine("GUI result: " + row.Text + " | " + row.SubItems[2].Text + " | " + job.Error + " | " + job.Warning); }
             if (list.Items[0].SubItems[2].Text != "完成" || list.Items[1].SubItems[2].Text != "完成" || list.Items[2].SubItems[2].Text != "失败") throw new Exception("GUI batch result states: " + ((TextBox)Field(f,"detailBox")).Text);
             if (!((Button)Field(f,"start")).Enabled || ((Button)Field(f,"stop")).Enabled) throw new Exception("restored controls");
+            if (((ProgressBar)Field(f,"total")).Value != 100) throw new Exception("completed GUI batch must show 100 percent total progress");
             foreach (ListViewItem row in list.Items) {
                 Job job = (Job)row.Tag; string state = job.State, label = row.SubItems[2].Text;
                 typeof(MainForm).GetMethod("OnProgress", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(f,

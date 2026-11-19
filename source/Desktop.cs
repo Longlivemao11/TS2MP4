@@ -48,8 +48,8 @@ namespace TS2MP4 {
             AutoScaleDimensions = new SizeF(96F, 96F); AutoScaleMode = AutoScaleMode.Dpi;
             appDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TS2MP4");
             BuildUI(); LoadSettings();
-            worker = new BackgroundWorker { WorkerReportsProgress = true };
-            worker.DoWork += RunBatch; worker.ProgressChanged += OnProgress; worker.RunWorkerCompleted += OnDone;
+            worker = new BackgroundWorker();
+            worker.DoWork += RunBatch; worker.RunWorkerCompleted += OnDone;
             FormClosing += OnClosing;
             Shown += delegate {
                 Rectangle area = Screen.FromControl(this).WorkingArea;
@@ -209,12 +209,19 @@ namespace TS2MP4 {
             int finished = 0;
             foreach (Job j in runJobs) {
                 ConversionResult result = converter.Convert(runFFmpeg, j.Input, runFolder, runEncode, runDeleteOriginal,
-                    delegate(double percent, string text) { worker.ReportProgress(0, new Update { Job = j, Percent = percent, Text = text, Finished = finished, Total = runJobs.Length }); }, Log);
-                finished++; worker.ReportProgress(0, new Update { Job = j, Result = result, Finished = finished, Total = runJobs.Length });
+                    delegate(double percent, string text) { PostUpdate(new Update { Job = j, Percent = percent, Text = text, Finished = finished, Total = runJobs.Length }); }, Log);
+                finished++; PostUpdate(new Update { Job = j, Result = result, Finished = finished, Total = runJobs.Length });
                 if (result.Cancelled) break;
             }
         }
+        void PostUpdate(Update update) {
+            // Bind progress delivery to this window, independently of the ambient context.
+            if (IsDisposed || Disposing) return;
+            BeginInvoke(new ProgressChangedEventHandler(OnProgress), this, new ProgressChangedEventArgs(0, update));
+        }
         void OnProgress(object sender, ProgressChangedEventArgs e) {
+            if (IsDisposed || Disposing) return;
+            if (InvokeRequired) { BeginInvoke(new ProgressChangedEventHandler(OnProgress), sender, e); return; }
             Update u = (Update)e.UserState;
             if (u.Result == null) {
                 if (u.Job.State == "完成" || u.Job.State == "失败" || u.Job.State == "已取消") return;
@@ -238,9 +245,9 @@ namespace TS2MP4 {
             total.Value = Math.Min(100, u.Finished * 100 / u.Total); totalText.Text = "本次批量：已处理 " + u.Finished + " / " + u.Total + " 个文件（含失败或取消）";
         }
         void OnDone(object sender, RunWorkerCompletedEventArgs e) {
+            if (IsDisposed || Disposing) return;
+            if (InvokeRequired) { BeginInvoke(new RunWorkerCompletedEventHandler(OnDone), sender, e); return; }
             if (e.Error != null) { Log(e.Error.ToString()); detailBox.Text = "批次异常：" + e.Error.Message; foreach (Job j in runJobs.Where(j => j.State == "转换中")) { j.State = "失败"; j.Row.SubItems[2].Text = "失败"; } }
-            foreach (Control c in editControls) c.Enabled = true;
-            outputBox.Enabled = !sameFolder.Checked; start.Enabled = true; stop.Enabled = false;
             current.Style = ProgressBarStyle.Continuous;
             int ok = runJobs.Count(j => j.State == "完成"), failed = runJobs.Count(j => j.State == "失败");
             int deleted = runJobs.Count(j => j.OriginalDeleted), warnings = runJobs.Count(j => j.Warning.Length > 0);
@@ -248,6 +255,8 @@ namespace TS2MP4 {
             if (runDeleteOriginal) currentText.Text += "；已删除原 TS " + deleted + " 个";
             if (failed == 0) detailBox.Text = currentText.Text + (warnings > 0 ? "\r\n有 " + warnings + " 个原 TS 未自动删除，请双击对应项目查看原因。" : "\r\n已完成项目不会重复转换。可以添加新文件，或重试取消 / 未完成项目。");
             deleteOriginal.Checked = false;
+            foreach (Control c in editControls) c.Enabled = true;
+            outputBox.Enabled = !sameFolder.Checked; stop.Enabled = false; start.Enabled = true;
             if (closing) { closing = false; Close(); }
         }
         void OnClosing(object sender, FormClosingEventArgs e) {
