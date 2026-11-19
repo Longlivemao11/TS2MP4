@@ -49,10 +49,11 @@ class UITests {
             ((Button)Field(f,"start")).PerformClick();
             if (((Button)Field(f,"start")).Enabled || !((Button)Field(f,"stop")).Enabled || deletion.Enabled) throw new Exception("running controls");
             DateTime deadline = DateTime.Now.AddSeconds(45);
-            while (((BackgroundWorker)Field(f,"worker")).IsBusy && DateTime.Now < deadline) { Application.DoEvents(); System.Threading.Thread.Sleep(20); }
+            while ((((BackgroundWorker)Field(f,"worker")).IsBusy || !((Button)Field(f,"start")).Enabled) && DateTime.Now < deadline) { Application.DoEvents(); System.Threading.Thread.Sleep(20); }
             Application.DoEvents();
             if (((BackgroundWorker)Field(f,"worker")).IsBusy) throw new Exception("GUI batch timeout");
-            if (list.Items[0].SubItems[2].Text != "完成" || list.Items[1].SubItems[2].Text != "完成" || list.Items[2].SubItems[2].Text != "失败") throw new Exception("GUI batch result states");
+            foreach (ListViewItem row in list.Items) { Job job = (Job)row.Tag; Console.WriteLine("GUI result: " + row.Text + " | " + row.SubItems[2].Text + " | " + job.Error + " | " + job.Warning); }
+            if (list.Items[0].SubItems[2].Text != "完成" || list.Items[1].SubItems[2].Text != "完成" || list.Items[2].SubItems[2].Text != "失败") throw new Exception("GUI batch result states: " + ((TextBox)Field(f,"detailBox")).Text);
             if (!((Button)Field(f,"start")).Enabled || ((Button)Field(f,"stop")).Enabled) throw new Exception("restored controls");
             Console.WriteLine("PASS GUI drag-drop handler and real batch conversion, result states, controls");
             f.Close();
@@ -68,7 +69,7 @@ class UITests {
             ((CheckBox)Field(f,"deleteOriginal")).Checked = true; f.AcceptDeletion = true;
             ((Button)Field(f,"start")).PerformClick();
             DateTime deadline = DateTime.Now.AddSeconds(45);
-            while (((BackgroundWorker)Field(f,"worker")).IsBusy && DateTime.Now < deadline) { Application.DoEvents(); System.Threading.Thread.Sleep(20); }
+            while ((((BackgroundWorker)Field(f,"worker")).IsBusy || !((Button)Field(f,"start")).Enabled) && DateTime.Now < deadline) { Application.DoEvents(); System.Threading.Thread.Sleep(20); }
             Application.DoEvents();
             if (((BackgroundWorker)Field(f,"worker")).IsBusy) throw new Exception("GUI deletion batch timeout");
             ListView list = (ListView)Field(f,"list");
