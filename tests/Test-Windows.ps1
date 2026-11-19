@@ -13,6 +13,8 @@ if (!(Test-Path -LiteralPath $application)) { throw 'Run Build-Windows.cmd first
 $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 if (!(Test-Path -LiteralPath $compiler)) { $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework\v4.0.30319\csc.exe' }
 if (!(Test-Path -LiteralPath $compiler)) { throw '.NET Framework compiler was not found.' }
+$results = Join-Path $repo 'TestResults'
+New-Item -ItemType Directory -Path $results -Force | Out-Null
 $temporary = Join-Path ([IO.Path]::GetTempPath()) ('TS2MP4-tests-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $temporary | Out-Null
 $settings = Join-Path $env:LOCALAPPDATA 'TS2MP4\settings.xml'
@@ -35,13 +37,13 @@ try {
     $coreTest = Join-Path $temporary 'CoreTests.exe'
     & $compiler /nologo /codepage:65001 "/out:$coreTest" "/reference:$application" /reference:System.Core.dll (Join-Path $PSScriptRoot 'CoreTests.cs')
     if ($LASTEXITCODE -ne 0) { throw 'Core test compilation failed.' }
-    & $coreTest $temporary $FFmpeg $FFprobe
+    & $coreTest $temporary $FFmpeg $FFprobe | Tee-Object -FilePath (Join-Path $results 'core-tests.txt')
     if ($LASTEXITCODE -ne 0) { throw 'Core integration tests failed.' }
     if ($IncludeUI) {
         $uiTest = Join-Path $temporary 'UITests.exe'
         & $compiler /nologo /codepage:65001 "/out:$uiTest" "/reference:$application" /reference:System.Core.dll /reference:System.Windows.Forms.dll /reference:System.Drawing.dll (Join-Path $PSScriptRoot 'UITests.cs')
         if ($LASTEXITCODE -ne 0) { throw 'UI test compilation failed.' }
-        & $uiTest $inputVideo (Join-Path $temporary 'ui.png') $FFmpeg
+        & $uiTest $inputVideo (Join-Path $results 'ui.png') $FFmpeg | Tee-Object -FilePath (Join-Path $results 'ui-tests.txt')
         if ($LASTEXITCODE -ne 0) { throw 'UI integration tests failed.' }
     }
     Write-Host 'All requested integration tests passed.'

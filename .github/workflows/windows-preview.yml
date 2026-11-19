@@ -1,0 +1,57 @@
+name: Windows build and preview
+
+on:
+  push:
+    branches: [main, feature/delete-original-after-success]
+    paths-ignore: ['**.md']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build with Windows .NET Framework
+        shell: cmd
+        run: Build-Windows.cmd /nopause
+      - name: Locate or install FFmpeg for generated test fixtures
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (!(Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
+            choco install ffmpeg --yes --no-progress
+            if ($LASTEXITCODE -ne 0) { throw 'FFmpeg installation failed.' }
+            $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + $env:Path
+          }
+          $ffmpeg = (Get-Command ffmpeg -ErrorAction Stop).Source
+          $ffprobe = Join-Path (Split-Path -Parent $ffmpeg) 'ffprobe.exe'
+          if (!(Test-Path -LiteralPath $ffprobe)) { throw 'ffprobe.exe was not found beside ffmpeg.exe.' }
+          Add-Content -Path $env:GITHUB_ENV -Value "TSMP4_TEST_FFMPEG=$ffmpeg"
+          Add-Content -Path $env:GITHUB_ENV -Value "TSMP4_TEST_FFPROBE=$ffprobe"
+          & $ffmpeg -version
+      - name: Run core and UI integration tests using temporary generated videos
+        shell: powershell
+        run: .\tests\Test-Windows.ps1 -FFmpeg $env:TSMP4_TEST_FFMPEG -FFprobe $env:TSMP4_TEST_FFPROBE -IncludeUI
+      - name: Package review builds only
+        shell: powershell
+        run: .\scripts\Package-Windows.ps1
+      - uses: actions/upload-artifact@v7
+        with:
+          name: TS2MP4-v1.1.0-preview
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: TS2MP4-Windows-test-results
+          path: TestResults/*
+          retention-days: 30

@@ -9,8 +9,8 @@ using System.Collections.Generic;
 
 namespace TS2MP4 {
     public sealed class ConversionResult {
-        public bool Success, Cancelled;
-        public string Output = "", Error = "";
+        public bool Success, Cancelled, OriginalDeleted;
+        public string Output = "", Error = "", Warning = "";
     }
     public sealed class Converter {
         private readonly object gate = new object();
@@ -85,11 +85,46 @@ namespace TS2MP4 {
                 } finally { Detach(p); }
             }
         }
+        private bool ValidateOutput(string ffmpeg, string path, double expectedDuration, Action<string> log) {
+            // Decode the entire candidate before allowing removal of the original.
+            string args = "-hide_banner -nostdin -v error -xerror -i " + Quote(path)
+                + " -map 0:v:0 -map 0:a? -f null -";
+            log("校验 MP4: " + Quote(ffmpeg) + " " + args);
+            using (Process p = NewProcess(ffmpeg, args)) {
+                StringBuilder errors = new StringBuilder();
+                p.ErrorDataReceived += delegate(object sender, DataReceivedEventArgs e) {
+                    if (e.Data == null) return;
+                    log(e.Data); if (errors.Length < 32768) errors.AppendLine(e.Data);
+                };
+                if (!Start(p)) return false;
+                try {
+                    p.BeginOutputReadLine(); p.BeginErrorReadLine(); p.WaitForExit();
+                    if (cancelled) return false;
+                    if (p.ExitCode != 0) throw new IOException("MP4 校验失败，原 TS 已保留。\r\n" + errors);
+                } finally { Detach(p); }
+            }
+            double actualDuration = Duration(ffmpeg, path);
+            if (cancelled) return false;
+            if (expectedDuration <= 0 || actualDuration <= 0)
+                throw new IOException("无法确认音视频时长，原 TS 已保留。可关闭自动删除选项后重试。");
+            if (Math.Abs(actualDuration - expectedDuration) > Math.Max(1, expectedDuration * 0.01))
+                throw new IOException("MP4 校验失败：时长与原 TS 差异较大，原文件已保留。");
+            return true;
+        }
         public ConversionResult Convert(string ffmpeg, string input, string folder, bool encode, Action<double,string> progress, Action<string> log) {
+            return Convert(ffmpeg, input, folder, encode, false, progress, log);
+        }
+        public ConversionResult Convert(string ffmpeg, string input, string folder, bool encode, bool deleteOriginal, Action<double,string> progress, Action<string> log) {
             ConversionResult result = new ConversionResult(); string temp = null;
             try {
                 if (cancelled) { result.Cancelled = true; return result; }
                 if (!File.Exists(input)) throw new IOException("原文件不存在：" + input);
+                input = Path.GetFullPath(input);
+                if (deleteOriginal && !String.Equals(Path.GetExtension(input), ".ts", StringComparison.OrdinalIgnoreCase))
+                    throw new IOException("自动删除只适用于 .ts 原文件。");
+                FileInfo source = new FileInfo(input);
+                long originalLength = source.Length;
+                DateTime originalWrite = source.LastWriteTimeUtc, originalCreation = source.CreationTimeUtc;
                 string output = AvailableOutput(input, folder);
                 Directory.CreateDirectory(Path.GetDirectoryName(output));
                 temp = Path.Combine(Path.GetDirectoryName(output), ".ts2mp4-" + Guid.NewGuid().ToString("N") + ".partial.mp4");
@@ -127,12 +162,36 @@ namespace TS2MP4 {
                     } finally { Detach(p); }
                 }
                 if (!File.Exists(temp) || new FileInfo(temp).Length == 0) throw new IOException("FFmpeg 未产生有效输出文件。");
+                if (deleteOriginal) {
+                    progress(-1, "正在完整校验 MP4，原 TS 尚未删除…");
+                    if (!ValidateOutput(ffmpeg, temp, duration, log)) { result.Cancelled = true; return result; }
+                }
                 // Never overwrite a file that appears while conversion is running.
                 lock (gate) {
                     if (cancelled) { result.Cancelled = true; return result; }
                     output = AvailableOutput(input, folder);
                     File.Move(temp, output);
                     result.Success = true; result.Output = output;
+                    if (deleteOriginal) {
+                        try {
+                            // Re-read metadata to avoid removing a source changed during conversion.
+                            source.Refresh();
+                            if (cancelled) result.Warning = "批次已取消，已保留原 TS。";
+                            else if (!source.Exists) result.Warning = "原 TS 已由外部移除，未执行自动删除。";
+                            else if (source.Length != originalLength || source.LastWriteTimeUtc != originalWrite || source.CreationTimeUtc != originalCreation)
+                                result.Warning = "原 TS 在转换期间发生变化，已保留原文件。";
+                            else if (String.Equals(input, Path.GetFullPath(output), StringComparison.OrdinalIgnoreCase)
+                                || !File.Exists(output) || new FileInfo(output).Length == 0)
+                                result.Warning = "无法确认 MP4 已保存，已保留原 TS。";
+                            else {
+                                File.Delete(input);
+                                result.OriginalDeleted = !File.Exists(input);
+                                if (!result.OriginalDeleted) result.Warning = "原 TS 未能删除，请手动检查。";
+                            }
+                        } catch (Exception ex) { result.Warning = "MP4 已保存，但原 TS 删除失败：" + ex.Message; }
+                        if (result.OriginalDeleted) log("已永久删除原 TS：" + input);
+                        else log("提示：" + result.Warning);
+                    }
                 }
                 progress(100, "完成"); log("完成：" + output);
             } catch (Exception ex) {

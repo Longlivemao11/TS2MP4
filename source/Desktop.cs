@@ -11,7 +11,8 @@ using System.Xml;
 
 namespace TS2MP4 {
     public class Job {
-        public string Input, Output = "", State = "等待", Error = "";
+        public string Input, Output = "", State = "等待", Error = "", Warning = "";
+        public bool OriginalDeleted;
         public ListViewItem Row;
     }
     public class Update {
@@ -24,7 +25,7 @@ namespace TS2MP4 {
         readonly List<Control> editControls = new List<Control>();
         TextBox ffmpegBox, outputBox, detailBox;
         ComboBox mode;
-        CheckBox sameFolder;
+        CheckBox sameFolder, deleteOriginal;
         ListView list;
         ProgressBar current, total;
         Label currentText, totalText, notice;
@@ -35,14 +36,14 @@ namespace TS2MP4 {
         bool closing;
         readonly object logGate = new object();
         string runFFmpeg, runFolder;
-        bool runEncode;
+        bool runEncode, runDeleteOriginal;
         Job[] runJobs;
 
         public MainForm() {
             Text = "TS → MP4 · 本地视频转换器";
             Font = new Font("Microsoft YaHei UI", 9F); ForeColor = ink;
             BackColor = Color.FromArgb(247, 249, 252);
-            ClientSize = new Size(1030, 730); MinimumSize = new Size(870, 620);
+            ClientSize = new Size(1030, 762); MinimumSize = new Size(870, 652);
             StartPosition = FormStartPosition.CenterScreen;
             AutoScaleDimensions = new SizeF(96F, 96F); AutoScaleMode = AutoScaleMode.Dpi;
             appDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TS2MP4");
@@ -69,11 +70,11 @@ namespace TS2MP4 {
         void BuildUI() {
             TableLayoutPanel root = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(24, 18, 24, 18), ColumnCount = 1, RowCount = 9 };
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            float[] heights = { 66, 42, 42, 68, 42, 0, 100, 74, 46 };
+            float[] heights = { 66, 42, 42, 100, 42, 0, 100, 74, 46 };
             for (int i = 0; i < heights.Length; i++) root.RowStyles.Add(i == 5 ? new RowStyle(SizeType.Percent, 100) : new RowStyle(SizeType.Absolute, heights[i]));
             Controls.Add(root);
             FlowLayoutPanel title = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false };
-            title.Controls.Add(LabelOf("TS → MP4", 22, true)); title.Controls.Add(LabelOf("本地转换 · 批量处理 · 保留原文件", 9, false)); root.Controls.Add(title, 0, 0);
+            title.Controls.Add(LabelOf("TS → MP4", 22, true)); title.Controls.Add(LabelOf("本地转换 · 批量处理 · 可选清理原 TS", 9, false)); root.Controls.Add(title, 0, 0);
 
             TableLayoutPanel exeRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3 };
             exeRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 85)); exeRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100)); exeRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100));
@@ -96,6 +97,8 @@ namespace TS2MP4 {
             sameFolder = new CheckBox { Text = "保存在每个原文件旁边", Checked = true, AutoSize = true, Margin = new Padding(12, 3, 0, 0) }; editControls.Add(sameFolder); modeRow.Controls.Add(sameFolder);
             sameFolder.CheckedChanged += delegate { outputBox.Enabled = !sameFolder.Checked && !workerBusy(); };
             settings.Controls.Add(modeRow);
+            deleteOriginal = new CheckBox { Text = "转换成功并校验后永久删除原 TS（只保留 MP4，仅本批次）", Checked = false, AutoSize = true, Margin = new Padding(0, 6, 0, 0), ForeColor = Color.FromArgb(160, 64, 32) };
+            editControls.Add(deleteOriginal); settings.Controls.Add(deleteOriginal);
             notice = LabelOf("无损模式不改变画质；若编码不兼容 MP4，请改用重新编码。", 9, false); notice.ForeColor = Color.FromArgb(91, 109, 131); notice.Margin = new Padding(0, 10, 0, 0); settings.Controls.Add(notice);
             mode.SelectedIndexChanged += delegate { notice.Text = mode.SelectedIndex == 0 ? "无损模式不改变画质；若编码不兼容 MP4，请改用重新编码。" : "H.264 / AAC，CRF 20；耗时和文件大小取决于视频，重新编码会有损耗。"; };
             root.Controls.Add(settings, 0, 3);
@@ -110,7 +113,7 @@ namespace TS2MP4 {
             list.Columns.Add("原文件", 300); list.Columns.Add("大小", 85); list.Columns.Add("状态 / 进度", 150); list.Columns.Add("输出文件", 330);
             list.DragEnter += delegate(object s, DragEventArgs e) { e.Effect = !workerBusy() && e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None; };
             list.DragDrop += delegate(object s, DragEventArgs e) { if (!workerBusy()) AddFiles((string[])e.Data.GetData(DataFormats.FileDrop)); };
-            list.DoubleClick += delegate { if (list.SelectedItems.Count == 0) return; Job j = (Job)list.SelectedItems[0].Tag; if (j.Error.Length > 0) ShowDetails(j.Error); else if (File.Exists(j.Output)) Reveal(j.Output); };
+            list.DoubleClick += delegate { if (list.SelectedItems.Count == 0) return; Job j = (Job)list.SelectedItems[0].Tag; if (j.Error.Length > 0) ShowDetails(j.Error); else if (j.Warning.Length > 0) ShowDetails(j.Warning); else if (File.Exists(j.Output)) Reveal(j.Output); };
             root.Controls.Add(list, 0, 5);
 
             TableLayoutPanel progress = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4, Padding = new Padding(0, 8, 0, 0) };
@@ -178,6 +181,11 @@ namespace TS2MP4 {
         void Log(string text) {
             lock (logGate) { try { File.AppendAllText(logPath, DateTime.Now.ToString("HH:mm:ss") + " " + text + Environment.NewLine, Encoding.UTF8); } catch { } }
         }
+        protected virtual bool ConfirmOriginalDeletion(int count) {
+            return MessageBox.Show(this,
+                "本批次有 " + count + " 个待转换文件。\r\n\r\n只有转换成功、完整校验并保存 MP4 后，才会永久删除对应的原 TS。失败、取消或校验失败时保留原 TS。\r\n\r\n删除不进入回收站，无法通过本工具撤销。是否继续？",
+                "确认删除原 TS", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
+        }
         void StartBatch(object sender, EventArgs e) {
             if (workerBusy()) return;
             string exe = ffmpegBox.Text.Trim().Trim(new char[] { '"' });
@@ -185,11 +193,13 @@ namespace TS2MP4 {
             if (!sameFolder.Checked && String.IsNullOrWhiteSpace(outputBox.Text)) { MessageBox.Show(this, "请选择输出目录，或勾选“保存在每个原文件旁边”。", "输出目录"); return; }
             runJobs = jobs.Where(j => j.State != "完成").ToArray();
             if (runJobs.Length == 0) { MessageBox.Show(this, jobs.Count == 0 ? "请先添加或拖入 TS 文件。" : "这些文件已经完成。添加新文件即可继续。", "待转换文件"); return; }
+            runDeleteOriginal = deleteOriginal.Checked;
+            if (runDeleteOriginal && !ConfirmOriginalDeletion(runJobs.Length)) return;
             runFFmpeg = Path.GetFullPath(exe); runFolder = sameFolder.Checked ? "" : outputBox.Text.Trim(); runEncode = mode.SelectedIndex == 1;
-            try { Directory.CreateDirectory(Path.Combine(appDir, "logs")); logPath = Path.Combine(appDir, "logs", "convert-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N").Substring(0, 6) + ".txt"); File.WriteAllText(logPath, "TS2MP4 1.0\r\n", Encoding.UTF8); }
+            try { Directory.CreateDirectory(Path.Combine(appDir, "logs")); logPath = Path.Combine(appDir, "logs", "convert-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N").Substring(0, 6) + ".txt"); File.WriteAllText(logPath, "TS2MP4 1.1.0\r\n删除原 TS：" + runDeleteOriginal + "\r\n", Encoding.UTF8); }
             catch (Exception ex) { MessageBox.Show(this, "无法创建本地日志：" + ex.Message, "无法开始"); return; }
             SaveSettings(); converter = new Converter();
-            foreach (Job j in runJobs) { j.State = "等待"; j.Error = ""; j.Row.SubItems[2].Text = "等待"; }
+            foreach (Job j in runJobs) { j.State = "等待"; j.Error = ""; j.Warning = ""; j.OriginalDeleted = false; j.Row.SubItems[2].Text = "等待"; }
             foreach (Control c in editControls) c.Enabled = false;
             start.Enabled = false; stop.Enabled = true; current.Value = 0; total.Value = 0;
             detailBox.Text = "正在转换。取消会停止当前文件和后续队列；已经完成的 MP4 会保留。";
@@ -198,7 +208,7 @@ namespace TS2MP4 {
         void RunBatch(object sender, DoWorkEventArgs e) {
             int finished = 0;
             foreach (Job j in runJobs) {
-                ConversionResult result = converter.Convert(runFFmpeg, j.Input, runFolder, runEncode,
+                ConversionResult result = converter.Convert(runFFmpeg, j.Input, runFolder, runEncode, runDeleteOriginal,
                     delegate(double percent, string text) { worker.ReportProgress(0, new Update { Job = j, Percent = percent, Text = text, Finished = finished, Total = runJobs.Length }); }, Log);
                 finished++; worker.ReportProgress(0, new Update { Job = j, Result = result, Finished = finished, Total = runJobs.Length });
                 if (result.Cancelled) break;
@@ -215,8 +225,10 @@ namespace TS2MP4 {
             } else {
                 ConversionResult r = u.Result;
                 u.Job.State = r.Success ? "完成" : (r.Cancelled ? "已取消" : "失败"); u.Job.Error = r.Error; u.Job.Output = r.Output;
-                u.Job.Row.SubItems[2].Text = u.Job.State; u.Job.Row.SubItems[3].Text = r.Output;
+                u.Job.Warning = r.Warning; u.Job.OriginalDeleted = r.OriginalDeleted;
+                u.Job.Row.SubItems[2].Text = r.OriginalDeleted ? "完成 · 已删 TS" : (r.Warning.Length > 0 ? "完成 · TS 未删除" : u.Job.State); u.Job.Row.SubItems[3].Text = r.Output;
                 u.Job.Row.ForeColor = r.Success ? Color.FromArgb(24, 122, 89) : (r.Cancelled ? ink : Color.FromArgb(180, 48, 48));
+                if (r.Warning.Length > 0) { u.Job.Row.ForeColor = Color.FromArgb(160, 100, 20); detailBox.Text = r.Warning + "\r\n双击该项目可查看提示。"; }
                 if (r.Success) { lastOutput = r.Output; current.Style = ProgressBarStyle.Continuous; current.Value = 100; }
                 else if (!r.Cancelled) { detailBox.Text = "失败：" + Path.GetFileName(u.Job.Input) + "\r\n" + r.Error + (runEncode ? "" : "\r\n编码不兼容时，可以选择“重新编码”再点击“开始 / 重试”。"); }
             }
@@ -228,8 +240,11 @@ namespace TS2MP4 {
             outputBox.Enabled = !sameFolder.Checked; start.Enabled = true; stop.Enabled = false;
             current.Style = ProgressBarStyle.Continuous;
             int ok = runJobs.Count(j => j.State == "完成"), failed = runJobs.Count(j => j.State == "失败");
+            int deleted = runJobs.Count(j => j.OriginalDeleted), warnings = runJobs.Count(j => j.Warning.Length > 0);
             currentText.Text = "批次结束：成功 " + ok + "，失败 " + failed + "，取消 / 未完成 " + (runJobs.Length - ok - failed);
-            if (failed == 0) detailBox.Text = currentText.Text + "\r\n已完成项目不会重复转换。可以添加新文件，或重试取消 / 未完成项目。";
+            if (runDeleteOriginal) currentText.Text += "；已删除原 TS " + deleted + " 个";
+            if (failed == 0) detailBox.Text = currentText.Text + (warnings > 0 ? "\r\n有 " + warnings + " 个原 TS 未自动删除，请双击对应项目查看原因。" : "\r\n已完成项目不会重复转换。可以添加新文件，或重试取消 / 未完成项目。");
+            deleteOriginal.Checked = false;
             if (closing) { closing = false; Close(); }
         }
         void OnClosing(object sender, FormClosingEventArgs e) {

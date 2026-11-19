@@ -3,7 +3,7 @@ setlocal DisableDelayedExpansion
 chcp 65001 >nul
 title TS2MP4 启动与诊断
 set "TSMP4_STATE=%LOCALAPPDATA%\TS2MP4"
-set "TSMP4_APP=%LOCALAPPDATA%\TS2MP4\app-v1.0.2"
+set "TSMP4_APP=%LOCALAPPDATA%\TS2MP4\app-v1.1.0"
 set "TSMP4_LOG=%LOCALAPPDATA%\TS2MP4\startup-latest.txt"
 if not exist "%TSMP4_APP%" mkdir "%TSMP4_APP%"
 if not exist "%TSMP4_APP%" (
@@ -11,7 +11,7 @@ if not exist "%TSMP4_APP%" (
   pause
   exit /b 1
 )
-> "%TSMP4_LOG%" echo TS2MP4 1.0.2 启动记录
+> "%TSMP4_LOG%" echo TS2MP4 1.1.0 启动记录
 set "TSMP4_CSC=%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
 if not exist "%TSMP4_CSC%" set "TSMP4_CSC=%WINDIR%\Microsoft.NET\Framework\v4.0.30319\csc.exe"
 if not exist "%TSMP4_CSC%" (

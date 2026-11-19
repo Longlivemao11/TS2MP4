@@ -31,7 +31,7 @@ Build-Windows.cmd /nopause
 powershell -NoProfile -File .\scripts\Package-Windows.ps1
 ```
 
-该脚本先执行本机构建，再创建 `dist/TS2MP4-Windows-v1.0.2.zip` 和 `dist/SHA256SUMS.txt`。包内含程序、配置、备用启动脚本、源码、LICENSE、说明与版本历史，不包含 FFmpeg、日志和测试视频。默认不允许覆盖已有同版本下载包；确认需要覆盖时加 `-Force`。
+该脚本先执行本机构建，再创建 `dist/TS2MP4-Windows-v1.1.0.zip` 和 `dist/SHA256SUMS.txt`。包内含程序、配置、备用启动脚本、源码、LICENSE、说明与版本历史，不包含 FFmpeg、日志和测试视频。默认不允许覆盖已有同版本下载包；确认需要覆盖时加 `-Force`。
 
 若本机策略阻止脚本，请按组织或个人的 PowerShell 策略处理；无须为普通 EXE 使用修改脚本策略。
 
@@ -39,4 +39,4 @@ powershell -NoProfile -File .\scripts\Package-Windows.ps1
 
 跨平台编译时必须使用 Microsoft .NET Framework 对应参考程序集，不要把 Mono 的运行实现程序集当作 Windows 编译目标。此前直接启动问题来自错误引用导致使用 Windows .NET Framework 不存在的重载，v1.0.2 已改用字符数组重载。
 
-当前交付的 EXE 沿用已经过用户 Windows 验证的 v1.0.2 二进制。本机构建得到的 EXE 时间戳、哈希可能不同；项目未声明二进制逐字节可复现。重新构建或修改源码后，应按 [测试说明](TESTING.md) 验证。
+v1.1.0 需要重新编译，使用 Windows 本机 .NET Framework 编译器，并按 [测试说明](TESTING.md) 验证。不同构建得到的 EXE 时间戳、哈希可能不同；项目未声明二进制逐字节可复现。
