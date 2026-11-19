@@ -15,8 +15,10 @@ class UITests {
     [STAThread] static void Main(string[] args) {
         if (args.Length != 3) throw new ArgumentException("Usage: UITests input-ts screenshot-path ffmpeg-exe");
         Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
+        Control.CheckForIllegalCrossThreadCalls = true;
         using (TestForm f = new TestForm()) {
             f.Show(); Application.DoEvents();
+            System.Threading.SynchronizationContext.SetSynchronizationContext(new WindowsFormsSynchronizationContext());
             var add = typeof(MainForm).GetMethod("AddFiles", BindingFlags.Instance | BindingFlags.NonPublic);
             add.Invoke(f, new object[] { new string[] { args[0], args[0], Path.Combine(Path.GetDirectoryName(args[0]), "silent.ts") } });
             Application.DoEvents();
@@ -67,6 +69,7 @@ class UITests {
         }
         using (TestForm f = new TestForm()) {
             f.Show(); Application.DoEvents();
+            System.Threading.SynchronizationContext.SetSynchronizationContext(new WindowsFormsSynchronizationContext());
             if (((CheckBox)Field(f,"deleteOriginal")).Checked) throw new Exception("deletion must not persist across windows");
             string input = Path.Combine(Path.GetDirectoryName(args[0]), "gui-delete.ts"); File.Copy(args[0], input);
             typeof(MainForm).GetMethod("AddFiles", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(f, new object[] { new string[] { input } });
